@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Control Mouse por Cámara</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection"></script>
+    <style>
+        #video { transform: scaleX(-1); width: 320px; }
+        #status { color: green; }
+    </style>
+</head>
+<body>
+    <video id="video" autoplay playsinline></video>
+    <div id="status">Cargando modelo...</div>
+    
+    <script>
+        let model;
+        const socket = new WebSocket('ws://TU_IP_PC:8765'); // Reemplaza TU_IP_PC
+        
+        // Configurar cámara
+        async function setupCamera() {
+            const video = document.getElementById('video');
+            const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+            video.srcObject = stream;
+            return new Promise((resolve) => video.onloadedmetadata = () => resolve(video));
+        }
+
+        // Detectar rostro y enviar coordenadas
+        async function detectFace() {
+            const video = await setupCamera();
+            model = await faceLandmarksDetection.load(
+                faceLandmarksDetection.SupportedPackages.mediapipeFacemesh
+            );
+            
+            document.getElementById('status').innerText = "Detectando...";
+            
+            setInterval(async () => {
+                const faces = await model.estimateFaces({ input: video });
+                if (faces.length > 0) {
+                    const nose = faces[0].scaledMesh[4]; // Punto de referencia nasal
+                    const coords = { x: nose[0] / video.videoWidth, y: nose[1] / video.videoHeight };
+                    socket.send(JSON.stringify(coords));
+                }
+            }, 100); // 10 FPS
+        }
+
+        socket.onopen = () => detectFace();
+        socket.onerror = (err) => console.error("WebSocket error:", err);
+    </script>
+</body>
+</html>
