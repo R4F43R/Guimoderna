@@ -15,8 +15,8 @@
     
     <script>
         let model;
-        const socket = new WebSocket('ws://192.168.100.217:8765'); // Reemplaza TU_IP_PC
-        
+        const pcIp = prompt("Ingresa la IP de tu PC:");
+        const socket = new WebSocket(`ws://${pcIp}:8765`);
         // Configurar cámara
         async function setupCamera() {
             const video = document.getElementById('video');
