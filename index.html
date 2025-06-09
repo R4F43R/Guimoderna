@@ -1,51 +1,85 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Control Mouse por Cámara</title>
+    <title>Control Mouse - GitHub</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection"></script>
     <style>
-        #video { transform: scaleX(-1); width: 320px; }
-        #status { color: green; }
+        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+        #video { transform: scaleX(-1); width: 90%; max-width: 400px; margin: 10px auto; display: block; }
+        .panel { margin: 15px; padding: 10px; }
+        button { padding: 10px 20px; font-size: 16px; }
     </style>
 </head>
 <body>
+    <h1>Control de Mouse por Cámara</h1>
+    <div class="panel">
+        <input type="text" id="ipInput" placeholder="IP de tu PC (ej: 192.168.1.10)">
+        <button id="connectBtn">Conectar</button>
+    </div>
     <video id="video" autoplay playsinline></video>
-    <div id="status">Cargando modelo...</div>
-    
+    <div id="status">Ingresa la IP de tu PC y presiona Conectar</div>
+
     <script>
-        let model;
-        const pcIp = prompt("Ingresa la IP de tu PC:");
-        const socket = new WebSocket(`ws://${pcIp}:8765`);
-        // Configurar cámara
-        async function setupCamera() {
-            const video = document.getElementById('video');
-            const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
-            video.srcObject = stream;
-            return new Promise((resolve) => video.onloadedmetadata = () => resolve(video));
+        let model, socket, video;
+        const statusEl = document.getElementById('status');
+        
+        async function initCamera() {
+            try {
+                video = document.getElementById('video');
+                const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+                video.srcObject = stream;
+                return new Promise(resolve => video.onloadedmetadata = () => resolve(video));
+            } catch (error) {
+                statusEl.innerText = "Error al acceder a la cámara: " + error.message;
+                return null;
+            }
         }
 
-        // Detectar rostro y enviar coordenadas
-        async function detectFace() {
-            const video = await setupCamera();
+        async function startDetection() {
             model = await faceLandmarksDetection.load(
-                faceLandmarksDetection.SupportedPackages.mediapipeFacemesh
+                faceLandmarksDetection.SupportedPackages.mediapipeFacemesh,
+                { maxFaces: 1 }
             );
             
-            document.getElementById('status').innerText = "Detectando...";
+            statusEl.innerText = "Detectando movimiento...";
             
             setInterval(async () => {
+                if (!video || socket.readyState !== WebSocket.OPEN) return;
+                
                 const faces = await model.estimateFaces({ input: video });
                 if (faces.length > 0) {
-                    const nose = faces[0].scaledMesh[4]; // Punto de referencia nasal
-                    const coords = { x: nose[0] / video.videoWidth, y: nose[1] / video.videoHeight };
+                    const nose = faces[0].scaledMesh[4];
+                    const coords = { 
+                        x: (nose[0] / video.videoWidth).toFixed(3),
+                        y: (nose[1] / video.videoHeight).toFixed(3)
+                    };
                     socket.send(JSON.stringify(coords));
                 }
-            }, 100); // 10 FPS
+            }, 100);
         }
 
-        socket.onopen = () => detectFace();
-        socket.onerror = (err) => console.error("WebSocket error:", err);
+        document.getElementById('connectBtn').addEventListener('click', async () => {
+            const ip = document.getElementById('ipInput').value.trim();
+            if (!ip) {
+                statusEl.innerText = "¡Debes ingresar una IP!";
+                return;
+            }
+            
+            statusEl.innerText = "Conectando...";
+            socket = new WebSocket(`ws://${ip}:8765`);
+            
+            socket.onopen = async () => {
+                statusEl.innerText = "Conectado. Iniciando cámara...";
+                if (await initCamera()) {
+                    startDetection();
+                }
+            };
+            
+            socket.onerror = () => {
+                statusEl.innerText = "Error de conexión. Verifica la IP y el servidor.";
+            };
+        });
     </script>
 </body>
 </html>
